@@ -2,7 +2,6 @@ import os
 import requests
 
 SPAM_URL = os.getenv("SPAM_DETECTOR_URL") 
-SPAM_API_KEY = os.getenv("SPAM_API_KEY")
 
 def check_for_spam(text):
     """
@@ -10,20 +9,18 @@ def check_for_spam(text):
     Returns: (is_spam, spam_probability, non_spam_probability)
     Always returns valid values even if API is unavailable
     """
-    if not SPAM_URL or not SPAM_API_KEY:
+    if not SPAM_URL:
         print("Spam detection API not configured")
         return False, 0.0, 1.0
     
     try:
-        headers = {"X-API-KEY": f"{SPAM_API_KEY}"}
         payload = {"text": text}
         
-        print(f"Spam detection request: URL={SPAM_URL}, Headers={headers}, Payload={payload}")
+        print(f"Spam detection request: URL={SPAM_URL}, Payload={payload}")
         
         response = requests.post(
             SPAM_URL,
             json=payload,
-            headers=headers,
             timeout=10  
         )
         
