@@ -49,11 +49,11 @@ class ReviewCreateSerializer(serializers.ModelSerializer):
         read_only_fields = ['id', 'user', 'created_at']
 
 
-# Admin-only serializers for moderation
 class ModerationResultSerializer(serializers.ModelSerializer):
     class Meta:
         model = ModerationResult
-        fields = ['flagged', 'categories', 'category_scores', 'created_at']
+        fields = ['flagged', 'categories', 'category_scores', 'is_spam', 
+                 'spam_probability', 'non_spam_probability', 'created_at']
 
 
 class AdminReviewWithModerationSerializer(serializers.ModelSerializer):
@@ -61,10 +61,13 @@ class AdminReviewWithModerationSerializer(serializers.ModelSerializer):
     moderation_result = ModerationResultSerializer(read_only=True)
     is_flagged = serializers.SerializerMethodField()
     flagged_categories = serializers.SerializerMethodField()
+    is_spam = serializers.SerializerMethodField()
+    spam_confidence = serializers.SerializerMethodField()
     
     class Meta:
         model = Review
-        fields = ['id', 'user', 'text', 'created_at', 'moderation_result', 'is_flagged', 'flagged_categories']
+        fields = ['id', 'user', 'text', 'created_at', 'moderation_result', 
+                 'is_flagged', 'flagged_categories', 'is_spam', 'spam_confidence']
     
     def get_is_flagged(self, obj):
         """Return whether the review is flagged by moderation"""
@@ -76,3 +79,11 @@ class AdminReviewWithModerationSerializer(serializers.ModelSerializer):
             categories = obj.moderation_result.categories
             return [cat for cat, flagged in categories.items() if flagged]
         return []
+    
+    def get_is_spam(self, obj):
+        """Return whether the review is detected as spam"""
+        return obj.moderation_result.is_spam if hasattr(obj, 'moderation_result') else False
+    
+    def get_spam_confidence(self, obj):
+        """Return spam detection confidence score"""
+        return obj.moderation_result.spam_probability if hasattr(obj, 'moderation_result') else 0.0

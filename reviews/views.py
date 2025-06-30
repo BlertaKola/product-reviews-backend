@@ -132,7 +132,7 @@ class ReviewListView(APIView):
             reviews = Review.objects.all()
         else:
             reviews = Review.objects.filter(
-                models.Q(moderation_result__flagged=False) | 
+                models.Q(moderation_result__flagged=False, moderation_result__is_spam=False) | 
                 models.Q(moderation_result__isnull=True)
             )
         
@@ -179,11 +179,18 @@ class ReviewDetailView(generics.RetrieveAPIView):
 
 @extend_schema(
     operation_id="admin_get_reviews_with_moderation",
-    description="Get reviews with moderation data (Admin only). Use ?flagged=true for flagged reviews only.",
+    description="Get reviews with moderation data (Admin only). Use ?flagged=true for flagged reviews, ?spam=true for spam reviews.",
     parameters=[
         OpenApiParameter(
             name='flagged',
             description='Filter by flagged status',
+            required=False,
+            type=OpenApiTypes.STR,
+            enum=['true', 'false'],
+        ),
+        OpenApiParameter(
+            name='spam',
+            description='Filter by spam detection status',
             required=False,
             type=OpenApiTypes.STR,
             enum=['true', 'false'],
@@ -198,6 +205,9 @@ class AdminReviewsWithModerationView(generics.ListAPIView):
     Optional query parameters:
     - ?flagged=true - show only flagged reviews
     - ?flagged=false - show only non-flagged reviews
+    - ?spam=true - show only spam reviews
+    - ?spam=false - show only non-spam reviews
+    - Parameters can be combined: ?flagged=true&spam=false
     """
     serializer_class = AdminReviewWithModerationSerializer
     permission_classes = [IsSuperUser]
@@ -212,6 +222,16 @@ class AdminReviewsWithModerationView(generics.ListAPIView):
             elif flagged.lower() == 'false':
                 queryset = queryset.filter(
                     models.Q(moderation_result__flagged=False) | 
+                    models.Q(moderation_result__isnull=True)
+                )
+        
+        spam = self.request.query_params.get('spam', None)
+        if spam is not None:
+            if spam.lower() == 'true':
+                queryset = queryset.filter(moderation_result__is_spam=True)
+            elif spam.lower() == 'false':
+                queryset = queryset.filter(
+                    models.Q(moderation_result__is_spam=False) | 
                     models.Q(moderation_result__isnull=True)
                 )
         
