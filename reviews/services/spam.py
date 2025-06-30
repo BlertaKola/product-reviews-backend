@@ -1,5 +1,6 @@
 import os
 import requests
+from ..utils import log_ai_error
 
 SPAM_URL = os.getenv("SPAM_DETECTOR_URL") 
 
@@ -42,9 +43,17 @@ def check_for_spam(text):
             
         return is_spam, spam_probability, non_spam_probability
         
-    except (requests.RequestException, ValueError, KeyError) as e:
-        print(f"Spam detection API error: {e}")
+    except requests.RequestException as e:
+        status_code = None
+        if hasattr(e, 'response') and e.response:
+            status_code = e.response.status_code
+        log_ai_error('spam_detection', text, e, status_code=status_code)
         return False, 0.0, 1.0
+        
+    except (ValueError, KeyError) as e:
+        log_ai_error('spam_detection', text, f"Data parsing error: {e}")
+        return False, 0.0, 1.0
+        
     except Exception as e:
-        print(f"Unexpected error in spam detection: {e}")
+        log_ai_error('spam_detection', text, f"Unexpected error: {e}")
         return False, 0.0, 1.0

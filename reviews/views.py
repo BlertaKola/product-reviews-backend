@@ -2,14 +2,15 @@ from rest_framework.views import APIView
 from rest_framework.response import Response
 from rest_framework import status, generics
 from .serializers import (RegisterSerializer, LoginSerializer, ReviewSerializer, 
-                         ReviewCreateSerializer, AdminReviewWithModerationSerializer)
+                         ReviewCreateSerializer, AdminReviewWithModerationSerializer,
+                         AIServiceErrorSerializer)
 from django.contrib.auth import authenticate
 from drf_spectacular.utils import extend_schema, OpenApiParameter
 from drf_spectacular.openapi import OpenApiTypes
 from rest_framework_simplejwt.tokens import RefreshToken
 from .permissions import IsSuperUser
 from django.contrib.auth.models import User
-from reviews.models import Review, ModerationResult
+from reviews.models import Review, ModerationResult, AIServiceError
 from rest_framework.permissions import IsAuthenticated
 from .tasks import moderate_review_task
 from django.db import models
@@ -236,3 +237,72 @@ class AdminReviewsWithModerationView(generics.ListAPIView):
                 )
         
         return queryset
+
+
+@extend_schema(
+    operation_id="admin_get_ai_service_errors",
+    description="Get AI service errors for monitoring and debugging (Admin only). Filter by service type or limit results.",
+    parameters=[
+        OpenApiParameter(
+            name='service',
+            description='Filter by service type',
+            required=False,
+            type=OpenApiTypes.STR,
+            enum=['moderation', 'spam_detection'],
+        ),
+        OpenApiParameter(
+            name='limit',
+            description='Limit number of results (default: 50, max: 200)',
+            required=False,
+            type=OpenApiTypes.INT,
+        ),
+    ],
+    responses={200: AIServiceErrorSerializer(many=True)},
+    tags=["Monitoring"]
+)
+class AIServiceErrorListView(generics.ListAPIView):
+    """
+    Admin-only endpoint to get AI service errors for monitoring
+    Optional query parameters:
+    - ?service=moderation - show only moderation errors
+    - ?service=spam_detection - show only spam detection errors  
+    - ?limit=20 - limit number of results (default: 50, max: 200)
+    """
+    serializer_class = AIServiceErrorSerializer
+    permission_classes = [IsSuperUser]
+    
+    def get_queryset(self):
+        queryset = AIServiceError.objects.all()
+        
+        service = self.request.query_params.get('service', None)
+        if service and service in ['moderation', 'spam_detection']:
+            queryset = queryset.filter(service=service)
+        
+        limit = self.request.query_params.get('limit', '50')
+        try:
+            limit = int(limit)
+            limit = min(max(limit, 1), 200)  
+        except (ValueError, TypeError):
+            limit = 50
+            
+        return queryset[:limit]
+
+
+@extend_schema(
+    operation_id="admin_get_ai_service_error_detail",
+    description="Get detailed information about a specific AI service error (Admin only)",
+    responses={
+        200: AIServiceErrorSerializer,
+        404: "Error not found"
+    },
+    tags=["Monitoring"]
+)
+class AIServiceErrorDetailView(generics.RetrieveAPIView):
+    """
+    Admin-only endpoint to get detailed information about a specific AI service error
+    """
+    queryset = AIServiceError.objects.all()
+    serializer_class = AIServiceErrorSerializer
+    permission_classes = [IsSuperUser]
+    lookup_field = 'id'
+    lookup_url_kwarg = 'error_id'

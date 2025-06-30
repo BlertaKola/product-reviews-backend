@@ -2,6 +2,7 @@ import os
 import requests
 from reviews.models import Review, ModerationResult
 from .spam import check_for_spam
+from ..utils import log_ai_error
 
 
 def moderate_review(review_text):
@@ -9,21 +10,49 @@ def moderate_review(review_text):
     Perform both OpenAI moderation and spam detection on review text
     Returns combined results from both services
     """
-    url = "https://api.openai.com/v1/moderations"
-    headers = {
-        "Authorization": f"Bearer {os.getenv('OPENAI_API_KEY')}",
-        "Content-Type": "application/json",
-    }
-    payload = {
-        "input": review_text,
-        "model": "omni-moderation-latest"
-    }
-    response = requests.post(url, headers=headers, json=payload)
-    response.raise_for_status()
-    moderation_result = response.json()
+    # OpenAI moderation
+    openai_result = None
+    try:
+        url = "https://api.openai.com/v1/moderations"
+        headers = {
+            "Authorization": f"Bearer {os.getenv('OPENAI_API_KEY')}",
+            "Content-Type": "application/json",
+        }
+        payload = {
+            "input": review_text,
+            "model": "omni-moderation-latest"
+        }
+        response = requests.post(url, headers=headers, json=payload)
+        response.raise_for_status()
+        openai_result = response.json()
+        
+    except requests.RequestException as e:
+        # Log the moderation error
+        log_ai_error('moderation', review_text, e)
+        # Use safe defaults for OpenAI moderation
+        openai_result = {
+            'results': [{
+                'flagged': False,
+                'categories': {},
+                'category_scores': {}
+            }]
+        }
+    except Exception as e:
+        # Log unexpected errors
+        log_ai_error('moderation', review_text, f"Unexpected error: {e}")
+        # Use safe defaults
+        openai_result = {
+            'results': [{
+                'flagged': False,
+                'categories': {},
+                'category_scores': {}
+            }]
+        }
     
+    # Spam detection with error handling
     try:
         is_spam, spam_probability, non_spam_probability = check_for_spam(review_text)
+        # Ensure we have valid values
         if is_spam is None:
             is_spam = False
         if spam_probability is None:
@@ -31,13 +60,16 @@ def moderate_review(review_text):
         if non_spam_probability is None:
             non_spam_probability = 1.0
     except Exception as e:
+        # Log spam detection error
+        log_ai_error('spam_detection', review_text, e)
         print(f"Spam detection failed: {e}")
         is_spam = False
         spam_probability = 0.0
         non_spam_probability = 1.0
     
+    # Combine results
     combined_result = {
-        'openai_moderation': moderation_result,
+        'openai_moderation': openai_result,
         'spam_detection': {
             'is_spam': is_spam,
             'spam_probability': spam_probability,

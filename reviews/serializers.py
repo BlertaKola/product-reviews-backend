@@ -1,7 +1,7 @@
 from rest_framework import serializers
 from django.contrib.auth.models import User
 from django.contrib.auth import authenticate
-from reviews.models import Review, ModerationResult
+from reviews.models import Review, ModerationResult, AIServiceError
 
 class RegisterSerializer(serializers.ModelSerializer):
     password = serializers.CharField(write_only=True)
@@ -54,6 +54,20 @@ class ModerationResultSerializer(serializers.ModelSerializer):
         model = ModerationResult
         fields = ['flagged', 'categories', 'category_scores', 'is_spam', 
                  'spam_probability', 'non_spam_probability', 'created_at']
+
+
+class AIServiceErrorSerializer(serializers.ModelSerializer):
+    service_display = serializers.CharField(source='get_service_display', read_only=True)
+    input_preview = serializers.SerializerMethodField()
+    
+    class Meta:
+        model = AIServiceError
+        fields = ['id', 'service', 'service_display', 'input_text', 'input_preview', 
+                 'error_message', 'status_code', 'timestamp']
+    
+    def get_input_preview(self, obj):
+        """Return a truncated preview of the input text for list views"""
+        return obj.input_text[:100] + "..." if len(obj.input_text) > 100 else obj.input_text
 
 
 class AdminReviewWithModerationSerializer(serializers.ModelSerializer):
